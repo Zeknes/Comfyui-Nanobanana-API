@@ -1,0 +1,9 @@
+# OpenRouter API Configuration
+# Copy this file to config.py and fill in your actual API key
+
+OPENROUTER_API_KEY = "<YOUR_OPENROUTER_API_KEY>"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# Model configuration
+DEFAULT_MODEL = "google/gemini-3-pro-image-preview"
+
