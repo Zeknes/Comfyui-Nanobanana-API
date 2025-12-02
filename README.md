@@ -5,7 +5,7 @@ ComfyUI 自定义节点，用于通过 OpenRouter API 调用 Gemini 图像生成
 ## 功能特性
 
 - 支持通过 OpenRouter API 调用 Gemini 图像生成模型
-- 支持文本提示和图像输入
+- 支持文本提示和多图片输入（最多4张）
 - 配置信息存储在 `config.py` 中，不在前端明文显示
 - 自动保存生成的图像到输出目录
 
@@ -41,7 +41,7 @@ cp config.py.example config.py
 
 1. 在 ComfyUI 中添加 "Nanobanana Image Generator" 节点
 2. 输入提示词（prompt）
-3. （可选）连接输入图像
+3. （可选）连接输入图像 - 可以连接最多4张图片
 4. 选择模型（或使用默认模型）
 5. 运行工作流
 
@@ -54,7 +54,7 @@ cp config.py.example config.py
 **输入：**
 - `prompt` (STRING): 图像生成提示词
 - `model` (STRING): 使用的模型名称（默认：google/gemini-3-pro-image-preview）
-- `input_image` (IMAGE, 可选): 输入图像
+- `input_image_1` 到 `input_image_4` (IMAGE, 可选): 输入图像（最多4张）
 
 **输出：**
 - `image` (IMAGE): 生成的图像

@@ -38,15 +38,22 @@ except ImportError:
 
 
 class NanobananaImageGenerator:
+    # Maximum number of input images supported
+    MAX_IMAGES = 10
+    
     @classmethod
     def INPUT_TYPES(cls):
+        # Fixed 4 input images
         return {
             "required": {
                 "prompt": ("STRING", {"multiline": True, "default": "Generate a beautiful sunset over mountains"}),
                 "model": ("STRING", {"default": config.DEFAULT_MODEL}),
             },
             "optional": {
-                "input_image": ("IMAGE",),
+                "input_image_1": ("IMAGE",),
+                "input_image_2": ("IMAGE",),
+                "input_image_3": ("IMAGE",),
+                "input_image_4": ("IMAGE",),
             }
         }
 
@@ -74,7 +81,7 @@ class NanobananaImageGenerator:
         img_array = np.array(pil_image).astype(np.float32) / 255.0
         return torch.from_numpy(img_array).unsqueeze(0)
 
-    def generate(self, prompt, model, input_image=None):
+    def generate(self, prompt, model, **kwargs):
         """Generate image using OpenRouter API"""
         
         # Check if API key is configured
@@ -82,6 +89,13 @@ class NanobananaImageGenerator:
             error_msg = "Please configure OPENROUTER_API_KEY in config.py"
             print(f"[ERROR] {error_msg}")
             return (self.generate_empty_image(), error_msg)
+        
+        # Collect input images (up to 4)
+        input_images = []
+        for i in range(1, 5):  # Fixed 4 inputs
+            img_key = f"input_image_{i}"
+            if img_key in kwargs and kwargs[img_key] is not None:
+                input_images.append(kwargs[img_key])
 
         # Save original proxy settings (before try block so finally can access)
         original_proxies = {}
@@ -92,10 +106,6 @@ class NanobananaImageGenerator:
                 original_proxies[var] = os.environ[var]
 
         try:
-            for var in proxy_vars:
-                if var in os.environ:
-                    original_proxies[var] = os.environ[var]
-            
             # Temporarily remove SOCKS proxy to avoid socksio dependency
             # Keep HTTP/HTTPS proxies if they exist
             socks_vars = ['SOCKS_PROXY', 'socks_proxy', 'ALL_PROXY', 'all_proxy']
@@ -120,32 +130,50 @@ class NanobananaImageGenerator:
             # Prepare messages
             messages = []
             
-            # Add input image if provided
-            if input_image is not None:
+            # Process input images
+            if input_images:
                 try:
-                    pil_img = self.image_tensor_to_pil(input_image)
-                    img_byte_arr = io.BytesIO()
-                    pil_img.save(img_byte_arr, format='PNG')
-                    img_bytes = img_byte_arr.getvalue()
-                    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                    content = []
                     
-                    messages.append({
-                        "role": "user",
-                        "content": [
-                            {
+                    # Add all input images
+                    for img_tensor in input_images:
+                        try:
+                            pil_img = self.image_tensor_to_pil(img_tensor)
+                            img_byte_arr = io.BytesIO()
+                            pil_img.save(img_byte_arr, format='PNG')
+                            img_bytes = img_byte_arr.getvalue()
+                            img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                            
+                            content.append({
                                 "type": "image_url",
                                 "image_url": {
                                     "url": f"data:image/png;base64,{img_base64}"
                                 }
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt
-                            }
-                        ]
-                    })
+                            })
+                        except Exception as e:
+                            print(f"[WARNING] Failed to process input image: {e}")
+                            continue
+                    
+                    # Add text prompt
+                    if content:
+                        content.append({
+                            "type": "text",
+                            "text": prompt
+                        })
+                        messages.append({
+                            "role": "user",
+                            "content": content
+                        })
+                    else:
+                        # If all images failed, just use text
+                        messages.append({
+                            "role": "user",
+                            "content": prompt
+                        })
+                    
+                    print(f"[INFO] Processing {len(input_images)} input image(s)")
                 except Exception as e:
-                    print(f"[WARNING] Failed to process input image: {e}")
+                    print(f"[WARNING] Failed to process input images: {e}")
                     messages.append({
                         "role": "user",
                         "content": prompt
@@ -242,6 +270,9 @@ class NanobananaImageGenerator:
                 if var not in original_proxies and var in os.environ:
                     del os.environ[var]
 
+
+# No frontend extensions needed
+# WEB_DIRECTORY = "./js"
 
 NODE_CLASS_MAPPINGS = {
     "NanobananaImageGenerator": NanobananaImageGenerator,
