@@ -59,8 +59,8 @@ class NanobananaImageGenerator:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING", "INT")
-    RETURN_NAMES = ("image", "text", "seed")
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "text")
     FUNCTION = "generate"
     CATEGORY = "Nanobanana"
 
@@ -90,7 +90,7 @@ class NanobananaImageGenerator:
         if not config.OPENROUTER_API_KEY or config.OPENROUTER_API_KEY == "<YOUR_OPENROUTER_API_KEY>":
             error_msg = "Please configure OPENROUTER_API_KEY in config.py"
             print(f"[ERROR] {error_msg}")
-            return (self.generate_empty_image(), error_msg, 0)
+            return (self.generate_empty_image(), error_msg)
         
         # Handle seed: if seed is 0, use random; otherwise use the specified seed
         if seed == 0:
@@ -204,21 +204,123 @@ class NanobananaImageGenerator:
                 extra_body={"modalities": ["image", "text"]}
             )
 
+            # Debug: Print response structure (simplified)
+            if hasattr(response, 'choices') and response.choices:
+                print(f"[DEBUG] Response has {len(response.choices)} choice(s)")
+            else:
+                print(f"[DEBUG] Response has no choices")
+            
             # Process response
-            message = response.choices[0].message
+            if not response or not hasattr(response, 'choices') or not response.choices or len(response.choices) == 0:
+                error_msg = "API returned empty response or no choices"
+                print(f"[ERROR] {error_msg}")
+                print(f"[DEBUG] Full response object: {response}")
+                if hasattr(response, '__dict__'):
+                    print(f"[DEBUG] Response __dict__: {response.__dict__}")
+                return (self.generate_empty_image(), error_msg)
+            
+            choice = response.choices[0]
+            
+            # Check for errors in the choice
+            if hasattr(choice, 'error') and choice.error:
+                error_info = choice.error
+                error_msg = f"API returned error: {error_info.get('message', 'Unknown error')}"
+                if 'metadata' in error_info and 'raw' in error_info['metadata']:
+                    try:
+                        import json
+                        raw_error = json.loads(error_info['metadata']['raw'])
+                        if 'error' in raw_error:
+                            api_error = raw_error['error']
+                            error_msg = f"API Error ({api_error.get('code', 'Unknown')}): {api_error.get('message', 'Unknown error')}"
+                            print(f"[ERROR] {error_msg}")
+                            print(f"[ERROR] Full error details: {raw_error}")
+                    except:
+                        pass
+                print(f"[ERROR] {error_msg}")
+                return (self.generate_empty_image(), error_msg)
+            
+            message = choice.message
+            
+            # Check for images in various locations (simplified logging)
+            has_images_in_content = False
+            has_images_attr = False
+            
+            if hasattr(message, 'content'):
+                content = message.content
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get('type') == 'image_url':
+                            has_images_in_content = True
+                            break
+            
+            if hasattr(message, 'images') and message.images:
+                has_images_attr = True
+            
+            print(f"[DEBUG] Message has content: {hasattr(message, 'content')}, has images attr: {has_images_attr}, images in content: {has_images_in_content}")
+            
             text_output = ""
             image_tensor = None
 
-            # Extract text content
-            if hasattr(message, 'content') and message.content:
-                text_output = message.content
+            # Extract text content and check for images in content list
+            if message and hasattr(message, 'content'):
+                content = message.content
+                if isinstance(content, list):
+                    # Content is a list of parts (text and/or images)
+                    text_parts = []
+                    for item in content:
+                        if isinstance(item, dict):
+                            if item.get('type') == 'text':
+                                text_parts.append(item.get('text', ''))
+                            elif item.get('type') == 'image_url':
+                                # Found image in content list
+                                print(f"[INFO] Found image in content list")
+                                image_url_data = item.get('image_url', {})
+                                if isinstance(image_url_data, dict):
+                                    image_url = image_url_data.get('url', '')
+                                else:
+                                    image_url = str(image_url_data)
+                                # Only log URL prefix, not full base64 data
+                                url_preview = image_url[:50] + "..." if image_url and len(image_url) > 50 else image_url
+                                print(f"[DEBUG] Image URL preview: {url_preview}")
+                                # Process this image URL
+                                if image_url and image_url.startswith('data:image'):
+                                    try:
+                                        header, encoded = image_url.split(',', 1)
+                                        img_data = base64.b64decode(encoded)
+                                        pil_img = Image.open(io.BytesIO(img_data))
+                                        image_tensor = self.pil_to_image_tensor(pil_img)
+                                        
+                                        output_dir = folder_paths.get_output_directory()
+                                        nanobanana_dir = os.path.join(output_dir, "nanobanana_outputs")
+                                        os.makedirs(nanobanana_dir, exist_ok=True)
+                                        
+                                        import uuid
+                                        file_name = os.path.join(nanobanana_dir, f"nanobanana_{uuid.uuid4()}.png")
+                                        pil_img.save(file_name)
+                                        print(f"[INFO] Saved image to: {file_name}")
+                                        break  # Use first image
+                                    except Exception as e:
+                                        print(f"[ERROR] Failed to process image from content: {e}")
+                                        import traceback
+                                        traceback.print_exc()
+                        elif hasattr(item, 'text'):
+                            text_parts.append(item.text)
+                    text_output = '\n'.join(text_parts)
+                elif content:
+                    text_output = content
+                if text_output:
+                    print(f"[INFO] Extracted text content length: {len(text_output)}")
 
             # Extract images - according to ref.md, message.images is a list of dicts
-            if hasattr(message, 'images') and message.images:
-                for image in message.images:
+            if message and hasattr(message, 'images') and message.images:
+                print(f"[INFO] Processing {len(message.images)} image(s) from message.images")
+                for idx, image in enumerate(message.images):
                     # Handle both dict and object formats
                     if isinstance(image, dict):
                         image_url = image.get('image_url', {}).get('url', '')
+                        if not image_url:
+                            # Try alternative structure
+                            image_url = image.get('url', '')
                     else:
                         # Object format
                         image_url = getattr(image, 'image_url', None)
@@ -227,6 +329,14 @@ class NanobananaImageGenerator:
                                 image_url = image_url.get('url', '')
                             else:
                                 image_url = getattr(image_url, 'url', '')
+                        else:
+                            # Try direct url attribute
+                            image_url = getattr(image, 'url', '')
+                    
+                    # Only log URL prefix, not full base64 data
+                    if image_url:
+                        url_preview = image_url[:50] + "..." if len(image_url) > 50 else image_url
+                        print(f"[DEBUG] Image {idx} URL preview: {url_preview}")
                     
                     if image_url and image_url.startswith('data:image'):
                         # Handle base64 data URL
@@ -258,19 +368,38 @@ class NanobananaImageGenerator:
 
             if image_tensor is None:
                 print("[WARNING] No image found in response, generating placeholder")
+                # Only print detailed debug info when there's an issue
+                if message:
+                    print(f"[DEBUG] Message has images attr: {hasattr(message, 'images')}")
+                    if hasattr(message, 'images'):
+                        print(f"[DEBUG] message.images value: {message.images}")
+                    if hasattr(message, 'content'):
+                        content = message.content
+                        if isinstance(content, list):
+                            print(f"[DEBUG] Content list has {len(content)} items")
+                            for idx, item in enumerate(content):
+                                if isinstance(item, dict):
+                                    print(f"[DEBUG] Content item {idx} type: {item.get('type', 'unknown')}")
+                                else:
+                                    print(f"[DEBUG] Content item {idx} type: {type(item)}")
+                    else:
+                        print(f"[DEBUG] Message content type: {type(message.content) if hasattr(message, 'content') else 'N/A'}")
                 image_tensor = self.generate_empty_image()
                 if not text_output:
                     text_output = "Image generation completed but no image was returned"
+                else:
+                    text_output += "\n[WARNING] No image was returned from API"
 
             print(f"[INFO] Generation completed. Text length: {len(text_output)}")
-            return (image_tensor, text_output, actual_seed)
+            print(f"[INFO] Used seed: {actual_seed}")
+            return (image_tensor, text_output)
 
         except Exception as e:
             error_msg = f"API request failed: {str(e)}"
             print(f"[ERROR] {error_msg}")
             import traceback
             traceback.print_exc()
-            return (self.generate_empty_image(), error_msg, actual_seed if 'actual_seed' in locals() else 0)
+            return (self.generate_empty_image(), error_msg)
         finally:
             # Restore original proxy settings
             for var, value in original_proxies.items():

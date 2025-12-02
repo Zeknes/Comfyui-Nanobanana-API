@@ -60,7 +60,6 @@ cp config.py.example config.py
 **输出：**
 - `image` (IMAGE): 生成的图像
 - `text` (STRING): 模型返回的文本内容
-- `seed` (INT): 实际使用的seed值
 
 ## 注意事项
 
