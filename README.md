@@ -14,7 +14,7 @@ ComfyUI 自定义节点，用于通过 OpenRouter API 调用 Gemini 图像生成
 1. 将本仓库克隆到 ComfyUI 的 `custom_nodes` 目录：
 ```bash
 cd ComfyUI/custom_nodes
-git clone <repository-url> Comfyui-Nanobanana-API
+git clone https://github.com/Zeknes/Comfyui-Nanobanana-API.git
 ```
 
 2. 安装依赖：
