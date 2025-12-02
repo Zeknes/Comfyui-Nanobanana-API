@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 import io
 import base64
+import random
 import folder_paths
 from openai import OpenAI
 import httpx
@@ -54,11 +55,12 @@ class NanobananaImageGenerator:
                 "input_image_2": ("IMAGE",),
                 "input_image_3": ("IMAGE",),
                 "input_image_4": ("IMAGE",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647}),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING")
-    RETURN_NAMES = ("image", "text")
+    RETURN_TYPES = ("IMAGE", "STRING", "INT")
+    RETURN_NAMES = ("image", "text", "seed")
     FUNCTION = "generate"
     CATEGORY = "Nanobanana"
 
@@ -81,14 +83,22 @@ class NanobananaImageGenerator:
         img_array = np.array(pil_image).astype(np.float32) / 255.0
         return torch.from_numpy(img_array).unsqueeze(0)
 
-    def generate(self, prompt, model, **kwargs):
+    def generate(self, prompt, model, seed=0, **kwargs):
         """Generate image using OpenRouter API"""
         
         # Check if API key is configured
         if not config.OPENROUTER_API_KEY or config.OPENROUTER_API_KEY == "<YOUR_OPENROUTER_API_KEY>":
             error_msg = "Please configure OPENROUTER_API_KEY in config.py"
             print(f"[ERROR] {error_msg}")
-            return (self.generate_empty_image(), error_msg)
+            return (self.generate_empty_image(), error_msg, 0)
+        
+        # Handle seed: if seed is 0, use random; otherwise use the specified seed
+        if seed == 0:
+            actual_seed = random.randint(0, 2147483647)
+            print(f"[INFO] Seed is 0, using random seed: {actual_seed}")
+        else:
+            actual_seed = seed
+            print(f"[INFO] Using specified seed: {actual_seed}")
         
         # Collect input images (up to 4)
         input_images = []
@@ -253,14 +263,14 @@ class NanobananaImageGenerator:
                     text_output = "Image generation completed but no image was returned"
 
             print(f"[INFO] Generation completed. Text length: {len(text_output)}")
-            return (image_tensor, text_output)
+            return (image_tensor, text_output, actual_seed)
 
         except Exception as e:
             error_msg = f"API request failed: {str(e)}"
             print(f"[ERROR] {error_msg}")
             import traceback
             traceback.print_exc()
-            return (self.generate_empty_image(), error_msg)
+            return (self.generate_empty_image(), error_msg, actual_seed if 'actual_seed' in locals() else 0)
         finally:
             # Restore original proxy settings
             for var, value in original_proxies.items():

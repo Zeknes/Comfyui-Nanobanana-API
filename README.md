@@ -55,10 +55,12 @@ cp config.py.example config.py
 - `prompt` (STRING): 图像生成提示词
 - `model` (STRING): 使用的模型名称（默认：google/gemini-3-pro-image-preview）
 - `input_image_1` 到 `input_image_4` (IMAGE, 可选): 输入图像（最多4张）
+- `seed` (INT, 可选): Seed值，0表示随机生成（默认：0）
 
 **输出：**
 - `image` (IMAGE): 生成的图像
 - `text` (STRING): 模型返回的文本内容
+- `seed` (INT): 实际使用的seed值
 
 ## 注意事项
 
