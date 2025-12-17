@@ -64,7 +64,7 @@ cp config.py.example config.py
 ## 注意事项
 
 - `config.py` 文件包含敏感信息，不会被 git 同步
-- 请确保 `config.py.example` 文件被提交到 git，供其他用户参考
+- 根据`config.py.example` 修改 config.py
 - 需要有效的 OpenRouter API 密钥才能使用
 
 
